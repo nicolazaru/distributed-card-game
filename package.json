@@ -45,5 +45,9 @@
   "browserslist": [
     "> 1%",
     "last 2 versions"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicolazaru/distributed-card-game.git"
+  }
 }

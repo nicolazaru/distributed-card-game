@@ -5,7 +5,7 @@ import App from './App.vue'
 import VueSocketio from 'vue-socket.io';
 // Change IP address here
 
-Vue.use(VueSocketio, 'http://'+ '192.168.0.193' +':8070');
+Vue.use(VueSocketio, 'http://'+ '192.168.0.94' +':8070');
 
 Vue.config.productionTip = false;
 //Vue.config.disableHostCheck = true;

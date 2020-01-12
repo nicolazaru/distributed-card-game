@@ -15,7 +15,7 @@ let random_name = require('node-random-name');
 let node = {
     address: 'http://' + ip + ':' + port.toString(),
     ip: '',
-    isLeader: false,
+    isLeader: true,
     isViceLeader: false,
     viceLeaderElected: false,
     viceLeaderSocket: {},
@@ -843,32 +843,7 @@ io.on('connection',(socket)=>{
 
         let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.conn.remoteAddress;
 
-        if (node.isViceLeader) {
-            node.isViceLeader = false;
-            node.isLeader = true;
-            for (let key in node.db) {
-                if (node.db[key].ip === clientIp) {
-                    socket.emit('sessionRestored', node.db[key]);
-                    console.log('Restoring session of client: ', node.db[key].name);
-                }
-            }
-            /*node.db[socket.id] = {
-                viceLeaderAddress: viceLeader.address,
-                id: socket.id,
-                name: random_name({ first: true}),
-                avatar: node.avatar[Math.floor(Math.random() * 5)],
-                table: [],
-                cards: [],
-                deck: [],
-                points: 0,
-                renderPlayers: false,
-                renderMatch: false,
-                cardCovered: true,
-                showPopup: false,
-                popupText: ''
-            };*/
-        } else {
-            // Add new client to database
+        if (size(node.db) === 0) {
             node.db[socket.id] = {
                 viceLeaderAddress: viceLeader.address.slice(0,-4) + '8080',
                 id: socket.id,
@@ -879,6 +854,7 @@ io.on('connection',(socket)=>{
                 cards: [],
                 deck: [],
                 points: 0,
+                sessionActive: false,
                 renderPlayers: false,
                 renderMatch: false,
                 cardCovered: true,
@@ -887,6 +863,54 @@ io.on('connection',(socket)=>{
             };
             io.sockets.emit('newPlayer', node.db);
             console.log(`client connected: ${socket.id}, ip: ${clientIp}`);
+        } else {
+            let index = 0;
+            for (let key in node.db) {
+                if (node.db[key].ip === clientIp) {
+                    socket.emit('sessionRestored', node.db[key]);
+                    console.log('Restoring session of client: ', node.db[key].name);
+                    break;
+                }
+                console.log(index, size(node.db))
+                if (index === size(node.db)) {
+                    index = 0;
+                    // Add new client to database
+                    node.db[socket.id] = {
+                        viceLeaderAddress: viceLeader.address.slice(0,-4) + '8080',
+                        id: socket.id,
+                        ip:clientIp,
+                        name: random_name({ first: true}),
+                        avatar: node.avatar[Math.floor(Math.random() * 5)],
+                        table: [],
+                        cards: [],
+                        deck: [],
+                        points: 0,
+                        sessionActive: false,
+                        renderPlayers: false,
+                        renderMatch: false,
+                        cardCovered: true,
+                        showPopup: false,
+                        popupText: ''
+                    };
+                    io.sockets.emit('newPlayer', node.db);
+                    console.log(`client connected: ${socket.id}, ip: ${clientIp}`);
+                }
+                index += 1;
+            }
+        }
+
+
+        if (node.isViceLeader) {
+            console.log('Old leader died, I\'m the new leader');
+            node.isViceLeader = false;
+            node.isLeader = true;
+            // If we are the leader and the previous leader died --> run vice leader elections
+            console.log('Starting vice Leader elections');
+            // Start elections (score: -1 to avoid leader being elected as vice leader)
+            node.chain.next.socket.emit('elections', {
+                address: node.address,
+                score: -1
+            })
         }
     });
 
@@ -995,6 +1019,14 @@ function isEmpty(obj) {
             return false;
     }
     return true;
+}
+
+function size(obj) {
+    let size = 0, key;
+    for (key in obj) {
+        if (obj.hasOwnProperty(key)) size++;
+    }
+    return size;
 }
 
 function vote(candidate) {

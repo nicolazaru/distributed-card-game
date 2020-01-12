@@ -82,6 +82,16 @@
                 return {
                         player: [
                                 {
+                                        viceLeaderAddress: '',
+                                        id: '',
+                                        ip: '',
+                                        name: '',
+                                        avatar: '',
+                                        table: [],
+                                        cards: [],
+                                        deck: [],
+                                        points: 0,
+                                        popupText: '',
                                         renderPlayers: true,
                                         renderMatch: false,
                                         cardCovered: true,
@@ -127,11 +137,20 @@
                         }
                 },
                 sessionRestored(player) {
-                        this.player[0] = player;
+                        this.player[0].viceLeaderAddress= player.viceLeaderAddress;
+                        this.player[0].id=  player.id;
+                        this.player[0].ip=  player.ip;
+                        this.player[0].name=  player.name;
+                        this.player[0].avatar=  player.avatar;
+                        this.player[0].table=  player.table;
+                        this.player[0].cards=  player.cards;
+                        this.player[0].deck=  player.deck;
+                        this.player[0].points = player.points;
+                        this.player[0].popupText = player.popupText;
                         this.player[0].renderPlayers = player.renderPlayers;
                         this.player[0].renderMatch = player.renderMatch;
-                        this.player[0].cardCovered= player.cardCovered;
-                        this.player[0].showPopup = player.showPopup;
+                        this.player[0].cardCovered=  player.cardCovered;
+                        this.player[0].showPopup=  player.showPopup;
                         console.log('Session restored');
                         console.log(this.player[0]);
                 },
