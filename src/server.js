@@ -15,7 +15,7 @@ let random_name = require('node-random-name');
 let node = {
     address: 'http://' + ip + ':' + port.toString(),
     ip: '',
-    isLeader: true,
+    isLeader: false,
     isViceLeader: false,
     viceLeaderElected: false,
     viceLeaderSocket: {},
@@ -747,30 +747,28 @@ io.on('connection',(socket)=>{
         //socket.emit('ack', node.address);
     });
 
-    socket.on('handshake', function(n, callback){
-        if (n.isLeader) {
-            leader = n;
-            console.log('Leader is: ', leader.address);
-        }
-        // Update previous node information
-        node.chain.previous.address = n.address;
-        node.chain.previous.socket = socket;
-        console.log('Connected to previous node: ', node.chain.previous.address);
-        // Send own information to previous node
-        //socket.emit('ack', node.address);
-
-        // If we are the leader and the ring topology is complete --> run vice leader elections
-        if (!node.viceLeaderElected && node.isLeader && node.chain.next.socket !== '') {
-            console.log('Starting vice Leader elections');
-            // Start elections (score: -1 to avoid leader being elected as vice leader)
-            node.chain.next.socket.emit('elections', {
-                address: node.address,
-                score: -1
+    socket.on('node-dropped', (info)=>{
+        if (node.chain.previous.address === info.droppedNodeAddress) {
+            node.chain.previous.address = info.previousNodeAddress;
+            node.chain.previous.socket = generalServer(node.chain.previous.address);
+            node.chain.next.socket.emit('topology-fix', {
+                newNextNodeAddress: node.address,
+                destinationTopologyFix: info.previousNodeAddress
             })
+        } else {
+            node.chain.previous.socket.emit('node-dropped', info);
+        }
+    });
+
+    socket.on('topology-fix',(info)=>{
+        if (node.address === info.destinationTopologyFix) {
+            node.chain.next.address = info.newNextNodeAddress;
+            node.chain.next.socket = generalServer(node.chain.next.address);
+            console.log('new next node: ', node.chain.next.address);
+        } else {
+            node.chain.next.socket.emit('topology-fix', info)
         }
 
-        // Send own information to previous node
-        callback('error', node.address);
     });
 
     // Topology
@@ -828,6 +826,13 @@ io.on('connection',(socket)=>{
        } else {
            // Forward welcome message to the leader through ring
            node.chain.next.socket.emit('toLeader', nodeInfo);
+
+           node.chain.next.socket.on('disconnect', ()=>{
+               node.chain.previous.socket.emit('node-dropped', {
+                   droppedNodeAddress: node.chain.next.address,
+                   previousNodeAddress: node.address
+               });
+           })
        }
     });
 
@@ -871,7 +876,8 @@ io.on('connection',(socket)=>{
                     console.log('Restoring session of client: ', node.db[key].name);
                     break;
                 }
-                console.log(index, size(node.db))
+                //console.log(index, size(node.db))
+                index += 1;
                 if (index === size(node.db)) {
                     index = 0;
                     // Add new client to database
@@ -895,7 +901,7 @@ io.on('connection',(socket)=>{
                     io.sockets.emit('newPlayer', node.db);
                     console.log(`client connected: ${socket.id}, ip: ${clientIp}`);
                 }
-                index += 1;
+
             }
         }
 
