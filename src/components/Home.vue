@@ -73,8 +73,8 @@
         import match from "@/components/match";
         import card from "@/components/card";
         //import SocketIO from 'socket.io-client';
-        import Vue from 'vue'
-        import VueSocketio from "vue-socket.io";
+        /*import Vue from 'vue'
+        import VueSocketio from "vue-socket.io";*/
 
         export default {
         name: "Home",
@@ -126,10 +126,19 @@
                                 this.player[0].popupText = popupText + ' Wins !!   ';
                         }
                 },
+                sessionRestored(player) {
+                        this.player[0] = player;
+                        this.player[0].renderPlayers = player.renderPlayers;
+                        this.player[0].renderMatch = player.renderMatch;
+                        this.player[0].cardCovered= player.cardCovered;
+                        this.player[0].showPopup = player.showPopup;
+                        console.log('Session restored');
+                        console.log(this.player[0]);
+                },
                 disconnect(){
-                        console.log('Server lost - connecting to backup server..');
-                        console.log('new server: ', this.player[0].viceLeaderAddress)
-                        Vue.use(VueSocketio, this.player[0].viceLeaderAddress);
+                        console.log('Server lost - connecting to backup server: ',this.player[0].viceLeaderAddress);
+
+                        window.location.replace(this.player[0].viceLeaderAddress);
                         //let socket = SocketIO(this.$props.server, { origins: this.player[0].viceLeaderAddress })
                         //console.log(socket)
                         //window.location = this.player[0].viceLeaderAddress;

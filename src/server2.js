@@ -3,7 +3,10 @@ const app = require('express')();
 const server = require('http').createServer(app);
 let port = 8020;
 let ip = require('ip').address();
-let nextIo = require('socket.io-client');
+//let nextServer = nextIo('http://192.168.0.94:8070');
+let generalServer = require('socket.io-client');
+//let nextServer = require('socket.io-client')('http://192.168.0.94:8070');
+let leaderServer = require('socket.io-client')('http://192.168.0.193:8010');
 const websocket = require('socket.io');
 let random_name = require('node-random-name');
 
@@ -191,6 +194,8 @@ let leader = {
     isLeader: true,
     viceLeaderElected: false,
     db: {},
+    serversDB: [],
+    lastServer: '',
     table: {},
     cards: [
         // Stars
@@ -685,17 +690,18 @@ let cards = [
     },
 ];
 
-let nextServer = nextIo('http://' + ip + ':8030');
 
-// Next node
-nextServer.emit('handshake', node);
+/*nextServer.emit('handshake', node.address, function(error, message){
+    console.log("error: ", error);
+    console.log("connected to next node: ", message);
+});*/
 
-nextServer.on('ack', (address)=> {
+/*nextServer.on('ack', (address)=> {
     node.chain.next.address = address;
     node.chain.next.socket = nextServer;
     //node.chain.next.socketId = nextServer.id;
     console.log('Connected to next node: ', node.chain.next.address);
-});
+});*/
 
 
 // This node
@@ -705,8 +711,69 @@ const io = websocket.listen(server);
 
 io.on('connection',(socket)=>{
 
+
+    socket.on('error', (err)=>{
+        console.log(err)
+    });
+
+    socket.on('join-network', function(n, callback){
+        // n = client trying to join network
+        // Update previous node information
+        if (leader.serversDB.length === 0) {
+            // Send own information to previous node
+            callback(null, {
+                previous: node.address,
+                next: node.address,
+                leader: node.address
+            });
+            node.chain.next.address = n.address;
+            node.chain.previous.address = n.address;
+            node.chain.next.socket = generalServer(n.address);
+            node.chain.previous.socket = generalServer(n.address);
+        } else {
+            callback(null, {
+                previous: node.address,
+                next: leader.lastServer,
+                leader: node.address
+            });
+            node.chain.next.socket = generalServer(n.address);
+            node.chain.next.address = n.address;
+        }
+        leader.serversDB.push(n);
+        leader.lastServer = n.address;
+        console.log('Updated next node: ', node.chain.next.address);
+        // Send own information to previous node
+        //socket.emit('ack', node.address);
+    });
+
+    socket.on('handshake', function(n, callback){
+        if (n.isLeader) {
+            leader = n;
+            console.log('Leader is: ', leader.address);
+        }
+        // Update previous node information
+        node.chain.previous.address = n.address;
+        node.chain.previous.socket = socket;
+        console.log('Connected to previous node: ', node.chain.previous.address);
+        // Send own information to previous node
+        //socket.emit('ack', node.address);
+
+        // If we are the leader and the ring topology is complete --> run vice leader elections
+        if (!node.viceLeaderElected && node.isLeader && node.chain.next.socket !== '') {
+            console.log('Starting vice Leader elections');
+            // Start elections (score: -1 to avoid leader being elected as vice leader)
+            node.chain.next.socket.emit('elections', {
+                address: node.address,
+                score: -1
+            })
+        }
+
+        // Send own information to previous node
+        callback('error', node.address);
+    });
+
     // Topology
-    socket.on('handshake', (n)=>{
+    /*socket.on('handshake', (n)=>{
         // Update leader information
         if (n.isLeader) {
             leader = n;
@@ -728,24 +795,45 @@ io.on('connection',(socket)=>{
                 score: -1
             })
         }
-    });
+    });*/
 
     socket.on('elections', (candidate)=>{
         if (node.isLeader) {
             viceLeader.address = candidate.address;
             node.viceLeaderElected = true;
-            node.viceLeaderSocket = nextIo(candidate.address);
+            node.viceLeaderSocket = require('socket.io-client')(candidate.address);
             node.viceLeaderSocket.emit('vice-leader');
             console.log('Vice leader elected: ', candidate.address);
         } else {
             console.log('Voting..');
-            nextServer.emit('elections', vote(candidate))
+            node.chain.next.socket.emit('elections', vote(candidate))
         }
     });
 
     socket.on('vice-leader', ()=>{
         console.log('I\'ve been elected vice Leader!');
         node.isViceLeader = true;
+    });
+
+    socket.on('toLeader', (nodeInfo)=>{
+        if (node.isLeader) {
+            // If we are the leader and the ring topology is complete --> run vice leader elections
+            console.log('Starting vice Leader elections');
+            // Start elections (score: -1 to avoid leader being elected as vice leader)
+            node.chain.next.socket.emit('elections', {
+                address: node.address,
+                score: -1
+            })
+        } else {
+            // Forward welcome message to the leader through ring
+            node.chain.next.socket.emit('toLeader', nodeInfo);
+        }
+    });
+
+    socket.on('newPreviousNode', (address)=>{
+        node.chain.previous.socket = socket;
+        node.chain.previous.address = address;
+        console.log('New previous node: ', address)
     });
 
 
@@ -857,6 +945,35 @@ io.on('connection',(socket)=>{
         console.log(`client gone: ${socket.id}`)
     });
 });
+
+
+
+// Next node
+if (!node.isLeader) {
+    leaderServer.emit('join-network', node, function(error, nodeInfo){
+        // Response from leader
+        //console.log("error: ", error);
+        node.chain.next.address = nodeInfo.next;
+        node.chain.previous.address = nodeInfo.previous;
+        node.chain.next.socket = generalServer(nodeInfo.next);
+        node.chain.previous.socket = generalServer(nodeInfo.previous);
+        leader.address = nodeInfo.leader;
+        console.log("Joined network: ", nodeInfo);
+
+        // Send welcome message to the next node
+        node.chain.next.socket.emit('newPreviousNode', node.address);
+
+        // Send welcome message to the leader through ring
+        node.chain.next.socket.emit('toLeader', node.address);
+    });
+}
+
+
+// Next node
+/*nextServer.emit('handshake', node, function(error, address){
+    //console.log("error: ", error);
+    console.log("connected to next node: ", address);
+});*/
 
 
 
