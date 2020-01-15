@@ -1,23 +1,25 @@
 /* eslint-disable no-console */
 const app = require('express')();
 const server = require('http').createServer(app);
-let port = 8020;
 let ip = require('ip').address();
-//let nextServer = nextIo('http://192.168.0.94:8070');
-let generalServer = require('socket.io-client');
-//let nextServer = require('socket.io-client')('http://192.168.0.94:8070');
-let leaderServer = require('socket.io-client')('http://192.168.0.193:8010');
+let leaderIp = '10.0.0.45';
+let port = 8020;
 const websocket = require('socket.io');
+let generalServer = require('socket.io-client');
+let leaderServer = generalServer('http://' + leaderIp + ':' + '8010');
 let random_name = require('node-random-name');
 
 
 // Variables for servers
 let node = {
     address: 'http://' + ip + ':' + port.toString(),
+    ip: '',
+    socketId: '',
     isLeader: false,
     isViceLeader: false,
     viceLeaderElected: false,
-    viceLeaderSocket: {},
+    minimumServerNumber: 4,
+    viceLeaderAddress: '',
     db: {},
     table: {},
     cards: [
@@ -194,8 +196,7 @@ let leader = {
     isLeader: true,
     viceLeaderElected: false,
     db: {},
-    serversDB: [],
-    lastServer: '',
+    serversDB: [{...node}],
     table: {},
     cards: [
         // Stars
@@ -718,168 +719,287 @@ io.on('connection',(socket)=>{
 
     socket.on('join-network', function(n, callback){
         // n = client trying to join network
-        // Update previous node information
-        if (leader.serversDB.length === 0) {
-            // Send own information to previous node
-            callback(null, {
-                previous: node.address,
-                next: node.address,
-                leader: node.address
-            });
-            node.chain.next.address = n.address;
-            node.chain.previous.address = n.address;
-            node.chain.next.socket = generalServer(n.address);
-            node.chain.previous.socket = generalServer(n.address);
-        } else {
-            callback(null, {
-                previous: node.address,
-                next: leader.lastServer,
-                leader: node.address
-            });
-            node.chain.next.socket = generalServer(n.address);
-            node.chain.next.address = n.address;
+
+
+        n.socketId = socket.id;
+
+        let nodeInfo = {
+            socketId: socket.id,
+            previous: node.address,
+            next: node.address,
+            leader: node.address
+        };
+
+        // Insert chain info
+        n.chain.next.address = node.address;
+
+        if (!databaseEmpty(leader.serversDB)) {
+            nodeInfo.next = node.chain.next.address;
+            n.chain.next.address = node.chain.next.address
         }
+
+
+        n.chain.previous.address = node.address;
+        // Update this node (leader) info
+        node.chain.next.address = n.address;
+        //node.chain.previous.address = n.address;
+
+
+        callback(null, nodeInfo);
+
+        // Update previous previous node info
+        for (let i in leader.serversDB) {
+            if (leader.serversDB[i].address === n.chain.next.address) {
+                leader.serversDB[i].chain.previous.address = n.address;
+            }
+        }
+
         leader.serversDB.push(n);
-        leader.lastServer = n.address;
+
         console.log('Updated next node: ', node.chain.next.address);
-        // Send own information to previous node
-        //socket.emit('ack', node.address);
-    });
 
-    socket.on('handshake', function(n, callback){
-        if (n.isLeader) {
-            leader = n;
-            console.log('Leader is: ', leader.address);
-        }
-        // Update previous node information
-        node.chain.previous.address = n.address;
-        node.chain.previous.socket = socket;
-        console.log('Connected to previous node: ', node.chain.previous.address);
-        // Send own information to previous node
-        //socket.emit('ack', node.address);
+        // Run elections
+        if (!node.viceLeaderElected && leader.serversDB.length >= node.minimumServerNumber) {
+            console.log('Starting vice leader elections');
 
-        // If we are the leader and the ring topology is complete --> run vice leader elections
-        if (!node.viceLeaderElected && node.isLeader && node.chain.next.socket !== '') {
-            console.log('Starting vice Leader elections');
             // Start elections (score: -1 to avoid leader being elected as vice leader)
-            node.chain.next.socket.emit('elections', {
+            generalServer(node.chain.next.address).emit('elections', {
                 address: node.address,
                 score: -1
             })
         }
+    });
 
-        // Send own information to previous node
-        callback('error', node.address);
+    socket.on('update-node', (nodeInfo)=>{
+        if (node === nodeInfo) {
+            console.log('I\'m up to date');
+        } else {
+            if (node.chain.next.address !== nodeInfo.chain.next.address) {
+                console.log('new next node: ', nodeInfo.chain.next.address);
+            }
+            if (node.chain.previous.address !== nodeInfo.chain.previous.address) {
+                console.log('new previous node: ', nodeInfo.chain.previous.address);
+            }
+            node = nodeInfo;
+        }
+    });
+
+    socket.on('topology-fix',(info, callback)=>{
+        if (info.newPreviousNode) {
+            node.chain.previous.address = info.newPreviousNode;
+            //node.chain.previous.socket = generalServer(info.newPreviousNode);
+            console.log('Updated previous node: ', node.chain.previous.address)
+        }
+        if (info.newNextNode) {
+            node.chain.next.address = info.newNextNode;
+            //node.chain.next.socket = generalServer(info.newNextNode);
+            console.log('Updated next node: ', node.chain.next.address)
+        }
+
+        // Send ack message to the leader
+        callback(null, {
+            nextNode: node.chain.next.address,
+            previousNode: node.chain.previous.address
+        })
+
+
+        // Send welcome message to the leader through ring
+        /*node.chain.next.socket.emit('toLeader', [node]);*/
     });
 
     // Topology
-    /*socket.on('handshake', (n)=>{
-        // Update leader information
-        if (n.isLeader) {
-            leader = n;
-            console.log('Leader is: ', leader.address);
-        }
-        // Update previous node information
-        node.chain.previous.address = n.address;
-        node.chain.previous.socket = socket;
-        console.log('Connected to previous node: ', node.chain.previous.address);
-        // Send own information to previous node
-        socket.emit('ack', node.address);
-
-        // If we are the leader and the ring topology is complete --> run vice leader elections
-        if (!node.viceLeaderElected && node.isLeader && node.chain.next.socket !== '') {
-            console.log('Starting vice Leader elections');
-            // Start elections (score: -1 to avoid leader being elected as vice leader)
-            node.chain.next.socket.emit('elections', {
-                address: node.address,
-                score: -1
-            })
-        }
-    });*/
 
     socket.on('elections', (candidate)=>{
         if (node.isLeader) {
             viceLeader.address = candidate.address;
             node.viceLeaderElected = true;
-            node.viceLeaderSocket = require('socket.io-client')(candidate.address);
-            node.viceLeaderSocket.emit('vice-leader');
+
             console.log('Vice leader elected: ', candidate.address);
+            // Synchronize vice leader
+            generalServer(viceLeader.address).emit('vice-leader', leader.serversDB);
+
         } else {
             console.log('Voting..');
-            node.chain.next.socket.emit('elections', vote(candidate))
+            generalServer(node.chain.next.address).emit('elections', vote(candidate))
         }
     });
 
-    socket.on('vice-leader', ()=>{
+    socket.on('new-leader', (address)=>{
+        leaderServer = generalServer(address);
+        leader.address = address;
+        console.log('new leader recognized: ', address);
+        console.log('waiting for network updates..');
+        /*//console.log(node)
+        leaderServer.emit('join-network', node, function(error, nodeInfo){
+            // Response from leader
+            //console.log("error: ", error);
+            node.chain.next.address = nodeInfo.next;
+            node.socketId = nodeInfo.socketId;
+            node.chain.previous.address = nodeInfo.previous;
+            //node.chain.next.socket = generalServer(nodeInfo.next);
+            //node.chain.previous.socket = generalServer(nodeInfo.previous);
+            leader.address = nodeInfo.leader;
+
+            console.log("new previous node: ", nodeInfo.previous);
+            console.log("new next node: ", nodeInfo.next);
+
+            // Send welcome message to the next node
+            // eslint-disable-next-line no-unused-vars
+            generalServer(node.chain.next.address).emit('newPreviousNode', node.address, function (err, msg) {
+                if (err) {
+                    console.log(err);
+                } else {
+                    //console.log(msg)
+                }
+            });
+        });*/
+    });
+
+    socket.on('vice-leader', (db)=>{
         console.log('I\'ve been elected vice Leader!');
+        leader.serversDB = db;
+        console.log('Server database backed up');
+        leaderServer.on('disconnect', ()=>{
+            console.log('Leader died, I\'m the new leader');
+            node.isViceLeader = false;
+            node.isLeader = true;
+
+            // Update myself in database
+            for (let s in leader.serversDB) {
+                //console.log(`Scanning database:\nAddress: ${s}: ${leader.serversDB[s].address}`);
+                if (leader.serversDB[s].address === node.address) {
+                    leader.serversDB[s] = node;
+                }
+            }
+
+            // Find dead leader node
+            let dN = findDeadNodeByAddress(leader.address, leader.serversDB);
+
+            if (dN) {
+
+                // Update db and remove dead node
+                let updatedDatabase = updateDB(leader.serversDB, dN);
+
+                // Notify the change to the other node involved
+                /*for (let s in updatedDatabase) {
+                    console.log(updatedDatabase[s].address, updatedDatabase[s].chain);
+                }*/
+                updateNodes(updatedDatabase);
+
+                // Notify change of leader
+                console.log('Broadcasting new leader information..');
+                broadcastNewLeader(leader.serversDB, node.address);
+
+                // Run elections
+                console.log('Starting vice leader elections');
+
+                setTimeout(function () {
+                    // Start elections (score: -1 to avoid leader being elected as vice leader)
+                    generalServer(node.chain.next.address).emit('elections', {
+                        address: node.address,
+                        score: -1
+                    })
+                }, 500);
+            } else {
+                console.log('Cannot find old leader in DB')
+            }
+        });
         node.isViceLeader = true;
     });
 
-    socket.on('toLeader', (nodeInfo)=>{
-        if (node.isLeader) {
-            // If we are the leader and the ring topology is complete --> run vice leader elections
-            console.log('Starting vice Leader elections');
-            // Start elections (score: -1 to avoid leader being elected as vice leader)
-            node.chain.next.socket.emit('elections', {
-                address: node.address,
-                score: -1
-            })
-        } else {
-            // Forward welcome message to the leader through ring
-            node.chain.next.socket.emit('toLeader', nodeInfo);
-        }
+    // Just vice leader receives on this topic
+    socket.on('vice-leader-db-update', (db)=>{
+        leader.serversDB = db;
+        console.log('Server database backed up')
     });
 
-    socket.on('newPreviousNode', (address)=>{
-        node.chain.previous.socket = socket;
+    socket.on('newPreviousNode', (address, callback)=>{
         node.chain.previous.address = address;
-        console.log('New previous node: ', address)
+
+        //leaderServer.emit('update-server', node);
+
+        console.log('New previous node: ', address);
+        //console.log('Sending my updated information to the leader via ring');
+
+        callback(null, 'next node updated with my info')
     });
 
 
     // Match
     socket.on('join-node',()=>{
 
-        if (node.isViceLeader) {
-            node.isViceLeader = false;
-            node.isLeader = true;
+        let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.conn.remoteAddress;
+
+        if (size(node.db) === 0) {
             node.db[socket.id] = {
-                viceLeaderAddress: viceLeader.address,
+                viceLeaderAddress: viceLeader.address.slice(0,-4) + '8080',
                 id: socket.id,
+                ip:clientIp,
                 name: random_name({ first: true}),
                 avatar: node.avatar[Math.floor(Math.random() * 5)],
                 table: [],
                 cards: [],
                 deck: [],
                 points: 0,
+                sessionActive: false,
                 renderPlayers: false,
                 renderMatch: false,
                 cardCovered: true,
                 showPopup: false,
                 popupText: ''
             };
+            io.sockets.emit('newPlayer', node.db);
+            console.log(`client connected: ${socket.id}, ip: ${clientIp}`);
         } else {
-            // Add new client to database
-            node.db[socket.id] = {
-                viceLeaderAddress: viceLeader.address,
-                id: socket.id,
-                name: random_name({ first: true}),
-                avatar: node.avatar[Math.floor(Math.random() * 5)],
-                table: [],
-                cards: [],
-                deck: [],
-                points: 0,
-                renderPlayers: false,
-                renderMatch: false,
-                cardCovered: true,
-                showPopup: false,
-                popupText: ''
-            };
-            console.log(`client connected: ${socket.id}`);
+            let index = 0;
+            for (let key in node.db) {
+                if (node.db[key].ip === clientIp) {
+                    socket.emit('sessionRestored', node.db[key]);
+                    console.log('Restoring session of client: ', node.db[key].name);
+                    break;
+                }
+                //console.log(index, size(node.db))
+                index += 1;
+                if (index === size(node.db)) {
+                    index = 0;
+                    // Add new client to database
+                    node.db[socket.id] = {
+                        viceLeaderAddress: viceLeader.address.slice(0,-4) + '8080',
+                        id: socket.id,
+                        ip:clientIp,
+                        name: random_name({ first: true}),
+                        avatar: node.avatar[Math.floor(Math.random() * 5)],
+                        table: [],
+                        cards: [],
+                        deck: [],
+                        points: 0,
+                        sessionActive: false,
+                        renderPlayers: false,
+                        renderMatch: false,
+                        cardCovered: true,
+                        showPopup: false,
+                        popupText: ''
+                    };
+                    io.sockets.emit('newPlayer', node.db);
+                    console.log(`client connected: ${socket.id}, ip: ${clientIp}`);
+                }
+
+            }
         }
 
-        io.sockets.emit('newPlayer', node.db);
 
+        /*if (node.isViceLeader) {
+            console.log('Old leader died, I\'m the new leader');
+            node.isViceLeader = false;
+            node.isLeader = true;
+            // If we are the leader and the previous leader died --> run vice leader elections
+            console.log('Starting vice Leader elections');
+            // Start elections (score: -1 to avoid leader being elected as vice leader)
+            node.chain.next.socket.emit('elections', {
+                address: node.address,
+                score: -1
+            })
+        }*/
     });
 
     socket.on('start-match',()=>{
@@ -918,7 +1038,7 @@ io.on('connection',(socket)=>{
         // Forward information to vice Leader
         if (node.isLeader) {
             try {
-                node.viceLeaderSocket.emit('player-update', player);
+                generalServer(viceLeader.address).emit('player-update', player);
             } catch (e) {
                 console.log("Failed to forward information to vice leader. Err: ", e)
             }
@@ -935,18 +1055,39 @@ io.on('connection',(socket)=>{
     });
 
     socket.on('disconnect',()=>{
+        // Find dead node in db
+        let dN = findDeadNode(socket.id, leader.serversDB);
+
+        if (dN) {
+            //console.log('Node died: ', dN.address, 'Informing neighbouring nodes');
+
+            console.log(dN)
+
+            // Update db and remove dead node
+            let updatedDatabase = updateDB(leader.serversDB, dN);
+
+            for (let s in updatedDatabase) {
+                console.log(updatedDatabase[s].address);
+            }
+            // Notify the change to the other node involved
+            updateNodes(updatedDatabase);
+
+
+            // Synchronize vice leader
+            synchViceLeader(updatedDatabase, viceLeader.address);
+        }
 
         if (node.db.hasOwnProperty(socket.id)){
+
+            console.log(`client gone: ${socket.id}, ip: ${node.db[socket.id].ip}, name: ${node.db[socket.id].name}`);
 
             removePlayer(node.db[socket.id]);
 
             io.sockets.emit('newPlayer', node.db);
+
         }
-        console.log(`client gone: ${socket.id}`)
     });
 });
-
-
 
 // Next node
 if (!node.isLeader) {
@@ -954,17 +1095,24 @@ if (!node.isLeader) {
         // Response from leader
         //console.log("error: ", error);
         node.chain.next.address = nodeInfo.next;
+        node.socketId = nodeInfo.socketId;
         node.chain.previous.address = nodeInfo.previous;
-        node.chain.next.socket = generalServer(nodeInfo.next);
-        node.chain.previous.socket = generalServer(nodeInfo.previous);
+        //node.chain.next.socket = generalServer(nodeInfo.next);
+        //node.chain.previous.socket = generalServer(nodeInfo.previous);
         leader.address = nodeInfo.leader;
-        console.log("Joined network: ", nodeInfo);
+
+        console.log("previous node: ", nodeInfo.previous);
+        console.log("next node: ", nodeInfo.next);
 
         // Send welcome message to the next node
-        node.chain.next.socket.emit('newPreviousNode', node.address);
-
-        // Send welcome message to the leader through ring
-        node.chain.next.socket.emit('toLeader', node.address);
+        // eslint-disable-next-line no-unused-vars
+        generalServer(node.chain.next.address).emit('newPreviousNode', node.address, function (err, msg) {
+            if (err) {
+                console.log(err);
+            } else {
+                //console.log(msg)
+            }
+        });
     });
 }
 
@@ -975,9 +1123,104 @@ if (!node.isLeader) {
     console.log("connected to next node: ", address);
 });*/
 
+function findDeadNode(sockeId, db) {
+    for (let n in db) {
+        if (db[n].socketId === sockeId) {
+            return db[n];
+        }
+        if (Number(n) === db.length - 1) {
+            return null;
+        }
+    }
+}
 
+function findDeadNodeByAddress(address, db) {
+    for (let n in db) {
+        if (db[n].address === address) {
+            return db[n];
+        }
+        if (Number(n) === db.length - 1) {
+            return null;
+        }
+    }
+}
 
+function updateChain(n, chain) {
+    if (chain.next.address) {
+        n.chain.next.address = chain.next.address;
+    }
+    if (chain.previous.address) {
+        n.chain.previous.address = chain.previous.address;
+    }
+    return n;
+}
 
+function updateDB(db, deadNode) {
+    // Neighbours of dead node
+    let previousNodeAddress = deadNode.chain.previous.address;
+    let nextNodeAddress = deadNode.chain.next.address;
+
+    // remove dead node
+    for (let d in db) {
+        if (db[d].address === deadNode.address) {
+            // Remove dead node from db
+            db.splice(d, 1)
+        }
+    }
+
+    // Update neighbouring nodes
+    for (let node in db) {
+        if (db[node].address === previousNodeAddress) {
+            // Update node before dead one
+            db[node] = updateChain(db[node], {
+                next:{
+                    address: nextNodeAddress,
+                },
+                previous: {
+                    address: null
+                }
+            })
+            //console.log(db[node].address, "updating previous node to: ", nextNodeAddress)
+        }
+        if (db[node].address === nextNodeAddress) {
+            // Update node after dead one
+            db[node] = updateChain(db[node], {
+                next:{
+                    address: null,
+                },
+                previous: {
+                    address: previousNodeAddress
+                }
+            });
+            //console.log(db[node].address, "updating next node to: ", previousNodeAddress)
+        }
+    }
+    return db;
+}
+
+function updateNodes(db) {
+    for (let node in db) {
+        console.log(`emitting node update to ${db[node].address}`);
+        generalServer(db[node].address).emit('update-node', db[node]);
+    }
+}
+
+function broadcastNewLeader(db, address) {
+    for (let node in db) {
+        if (!db[node].isLeader) {
+            // If node is not leader
+            generalServer(db[node].address).emit('new-leader', address);
+        }
+    }
+}
+
+function synchViceLeader(db, address) {
+    try {
+        generalServer(address).emit('vice-leader-db-update', db);
+    } catch (e) {
+        console.log('Failed to synchronize vice leader db. ERR:', e)
+    }
+}
 
 function isEmpty(obj) {
     for(let key in obj) {
@@ -985,6 +1228,19 @@ function isEmpty(obj) {
             return false;
     }
     return true;
+}
+
+function databaseEmpty(db) {
+    // If just leader is in DB
+    return db.length === 1 && db[0].isLeader;
+}
+
+function size(obj) {
+    let size = 0, key;
+    for (key in obj) {
+        if (obj.hasOwnProperty(key)) size++;
+    }
+    return size;
 }
 
 function vote(candidate) {
@@ -1003,7 +1259,8 @@ function removePlayer(player) {
     if (node.isLeader) {
         try {
             delete node.db[player.id];
-            node.viceLeaderSocket.emit('remove-player', player);
+            console.log('Removing information of player: ', player.name);
+            generalServer(viceLeader.address).emit('remove-player', player);
         } catch (e) {
             console.log("Failed to forward information to vice leader. Err: ", e)
         }
