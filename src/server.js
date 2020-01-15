@@ -3,10 +3,10 @@ const app = require('express')();
 const server = require('http').createServer(app);
 let ip = require('ip').address();
 let leaderIp = '10.0.0.45';
-let port = 8010;
+let port = 8070;
 const websocket = require('socket.io');
 let generalServer = require('socket.io-client');
-let leaderServer = generalServer('http://' + leaderIp + ':' + '8010');
+let leaderServer = generalServer('http://' + leaderIp + ':' + port.toString());
 let random_name = require('node-random-name');
 
 
@@ -15,7 +15,7 @@ let node = {
     address: 'http://' + ip + ':' + port.toString(),
     ip: '',
     socketId: '',
-    isLeader: true,
+    isLeader: ip === leaderIp,
     isViceLeader: false,
     viceLeaderElected: false,
     minimumServerNumber: 4,
