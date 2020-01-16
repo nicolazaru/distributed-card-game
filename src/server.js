@@ -1251,17 +1251,6 @@ function updateNodes(db) {
     }
 }
 
-function updateNodeSocketId(db, address, sId) {
-    for (let node in db) {
-        if (db[node].address === address) {
-            db[node].socketId = sId;
-            console.log('Updated node socket Id');
-            return db;
-        }
-    }
-    return db;
-}
-
 function broadcastNewLeader(db, address) {
     for (let node in db) {
         if (!db[node].isLeader) {
