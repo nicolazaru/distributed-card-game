@@ -861,7 +861,7 @@ io.on('connection',(socket)=>{
         console.log('I\'ve been elected vice Leader!');
         leader.serversDB = db;
         console.log('Server database backed up');
-        leaderServer = generalServer(leaderIp);
+        //leaderServer = generalServer(leaderIp);
         leaderServer.on('disconnect', ()=>{
             console.log('Leader died, I\'m the new leader');
             node.isViceLeader = false;
@@ -1080,6 +1080,7 @@ io.on('connection',(socket)=>{
                 })
             } else {
                 // Synchronize vice leader
+                console.log('Synchronizing vice leader: ', viceLeader.address);
                 synchViceLeader(updatedDatabase, viceLeader.address);
             }
         }
