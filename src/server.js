@@ -916,6 +916,18 @@ io.on('connection',(socket)=>{
             }
         });
         node.isViceLeader = true;
+
+        generalServer(leader.address).emit('vice-leader-ack', node.address);
+    });
+
+    socket.on('vice-leader-ack', (address)=>{
+        console.log('Ack from vice leader: ', address);
+        for (let s in leader.serversDB) {
+            if (leader.serversDB[s].address === address) {
+                leader.serversDB[s].socketId = socket.id;
+                console.log('Updated socket of vice leader')
+            }
+        }
     });
 
     // Just vice leader receives on this topic
