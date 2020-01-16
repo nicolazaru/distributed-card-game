@@ -846,6 +846,7 @@ io.on('connection',(socket)=>{
         leader.address = address;
         console.log('new leader recognized: ', address);
         console.log('waiting for network updates..');
+        generalServer(leader.address).emit('new-leader-ack', node.address);
         /*//console.log(node)
         leaderServer.emit('join-network', node, function(error, nodeInfo){
             // Response from leader
