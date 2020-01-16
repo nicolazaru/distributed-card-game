@@ -4,7 +4,7 @@ import App from './App.vue'
 
 import VueSocketio from 'vue-socket.io';
 // Change IP address here
-let ip = '10.0.0.45';
+let ip = '10.20.5.120';
 Vue.use(VueSocketio, 'http://'+ ip +':8070');
 
 Vue.config.productionTip = false;

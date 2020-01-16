@@ -112,6 +112,7 @@
                         this.player = [playerData];
                         this.player[0].renderPlayers = false;
                         this.player[0].renderMatch = true;
+                        console.log(this.player[0].viceLeaderAddress)
                 },
                 updateDeck(deck) {
                         this.player[0].deck = deck;
@@ -156,8 +157,11 @@
                 },
                 disconnect(){
                         console.log('Server lost - connecting to backup server: ',this.player[0].viceLeaderAddress);
+                        let that = this;
+                        setTimeout(function () {
+                                window.location.replace(that.player[0].viceLeaderAddress)
+                        }, 2000);
 
-                        window.location.replace(this.player[0].viceLeaderAddress);
                         //let socket = SocketIO(this.$props.server, { origins: this.player[0].viceLeaderAddress })
                         //console.log(socket)
                         //window.location = this.player[0].viceLeaderAddress;

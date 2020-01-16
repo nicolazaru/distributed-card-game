@@ -2,7 +2,7 @@
 const app = require('express')();
 const server = require('http').createServer(app);
 let ip = require('ip').address();
-let leaderIp = '10.0.0.45';
+let leaderIp = '10.20.5.120';
 let port = 8070;
 const websocket = require('socket.io');
 let generalServer = require('socket.io-client');
@@ -861,6 +861,7 @@ io.on('connection',(socket)=>{
         console.log('I\'ve been elected vice Leader!');
         leader.serversDB = db;
         console.log('Server database backed up');
+        leaderServer = generalServer(leaderIp);
         leaderServer.on('disconnect', ()=>{
             console.log('Leader died, I\'m the new leader');
             node.isViceLeader = false;
