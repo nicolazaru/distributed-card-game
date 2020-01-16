@@ -1060,6 +1060,7 @@ io.on('connection',(socket)=>{
     socket.on('disconnect',()=>{
         // Find dead node in db
         let dN = findDeadNode(socket.id, leader.serversDB);
+        console.log('node died: ', dN);
 
         if (dN) {
             console.log('Node died: ', dN.address, 'Informing neighbouring nodes');
