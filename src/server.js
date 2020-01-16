@@ -2,7 +2,7 @@
 const app = require('express')();
 const server = require('http').createServer(app);
 let ip = require('ip').address();
-let leaderIp = '10.20.5.120';
+let leaderIp = '10.20.5.125';
 let port = 8070;
 const websocket = require('socket.io');
 let generalServer = require('socket.io-client');
@@ -1080,7 +1080,7 @@ io.on('connection',(socket)=>{
     socket.on('disconnect',()=>{
         // Find dead node in db
         let dN = findDeadNode(socket.id, leader.serversDB);
-        console.log('node died: ', dN);
+        //console.log('node died: ', dN);
 
         if (dN) {
             console.log('Node died: ', dN.address, 'Informing neighbouring nodes');
