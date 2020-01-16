@@ -771,6 +771,7 @@ io.on('connection',(socket)=>{
     });
 
     socket.on('update-node', (nodeInfo)=>{
+
         if (node === nodeInfo) {
             console.log('I\'m up to date');
         } else {
@@ -783,7 +784,14 @@ io.on('connection',(socket)=>{
             node = nodeInfo;
         }
 
+        console.log('sending ack to leader: ', leader.address);
+        generalServer(leader.address).emit('update-node-ack', node.address);
+
         //console.log('chain: ', node.chain);
+    });
+
+    socket.on('update-node-ack', (address)=>{
+        leader.serversDB = updateNodeSocketId(leader.serversDB, address, socket.id);
     });
 
     socket.on('topology-fix',(info, callback)=>{
@@ -1212,6 +1220,17 @@ function updateNodes(db) {
         //console.log(`emitting node update to ${db[node].address}`);
         generalServer(db[node].address).emit('update-node', db[node]);
     }
+}
+
+function updateNodeSocketId(db, address, sId) {
+    for (let node in db) {
+        if (db[node].address === address) {
+            db[node].socketId = sId;
+            console.log('Updated node socket Id');
+            return db;
+        }
+    }
+    return db;
 }
 
 function broadcastNewLeader(db, address) {
