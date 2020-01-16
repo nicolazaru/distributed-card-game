@@ -15,7 +15,7 @@ let node = {
     address: 'http://' + ip + ':' + port.toString(),
     ip: '',
     socketId: '',
-    isLeader: ip === leaderIp,
+    isLeader: false,
     isViceLeader: false,
     viceLeaderElected: false,
     minimumServerNumber: 4,
@@ -1062,7 +1062,7 @@ io.on('connection',(socket)=>{
         let dN = findDeadNode(socket.id, leader.serversDB);
 
         if (dN) {
-            //console.log('Node died: ', dN.address, 'Informing neighbouring nodes');
+            console.log('Node died: ', dN.address, 'Informing neighbouring nodes');
 
             // Update db and remove dead node
             let updatedDatabase = updateDB(leader.serversDB, dN);
