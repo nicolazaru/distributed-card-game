@@ -791,7 +791,14 @@ io.on('connection',(socket)=>{
     });
 
     socket.on('update-node-ack', (address)=>{
-        leader.serversDB = updateNodeSocketId(leader.serversDB, address, socket.id);
+        console.log('Ack from node: ', address);
+        for (let s in leader.serversDB) {
+            if (leader.serversDB[s].address === address) {
+                leader.serversDB[s].socketId = socket.id;
+                console.log('Updated socket of node: ', address)
+            }
+        }
+        //leader.serversDB = updateNodeSocketId(leader.serversDB, address, socket.id);
     });
 
     socket.on('topology-fix',(info, callback)=>{
