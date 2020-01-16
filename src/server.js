@@ -872,6 +872,16 @@ io.on('connection',(socket)=>{
         });*/
     });
 
+    socket.on('new-leader-ack', (address)=>{
+        console.log('Ack (leader change) from node : ', address);
+        for (let s in leader.serversDB) {
+            if (leader.serversDB[s].address === address) {
+                leader.serversDB[s].socketId = socket.id;
+                console.log('Updated socket of node: ', address)
+            }
+        }
+    });
+
     socket.on('vice-leader', (db)=>{
         console.log('I\'ve been elected vice Leader!');
         leader.serversDB = db;
